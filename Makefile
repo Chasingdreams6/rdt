@@ -14,11 +14,13 @@ all: $(TARGETS)
 
 rdt_sender.o: 	rdt_struct.h rdt_sender.h
 
-rdt_receiver.o:	rdt_struct.h rdt_receiver.h 
+rdt_receiver.o:	rdt_struct.h rdt_receiver.h
 
 rdt_sim.o: 	rdt_struct.h
 
-rdt_sim: rdt_sim.o rdt_sender.o rdt_receiver.o
+rdt_util.o: rdt_util.h
+
+rdt_sim: rdt_sim.o rdt_sender.o rdt_receiver.o rdt_util.o
 	g++ $(LDFLAGS) -o $@ $^
 
 clean:
