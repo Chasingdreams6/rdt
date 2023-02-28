@@ -8,6 +8,7 @@
 #include "rdt_struct.h"
 
 #define MAX_SEQ 10
+#define MAX_WINDOW (MAX_SEQ >> 1)
 #define SEND_BUFFER 128
 #define HEADER_SIZE 2
 #define TAIL_SIZE 2
@@ -43,5 +44,7 @@ void build_checksum(packet *packet);
 unsigned short calc_checksum(packet *packet);
 bool check_packet(packet *packet);
 static bool between(int a, int b, int c);
+bool this_turn(int seq, int window_head);
+
 
 #endif //RDT_RDT_UTIL_H

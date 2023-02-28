@@ -40,6 +40,7 @@ void Receiver_Final()
     fprintf(stdout, "At %.2fs: receiver finalizing ...\n", GetSimulationTime());
 }
 
+
 /* event handler, called when a packet is passed from the lower layer at the 
    receiver */
 void Receiver_FromLowerLayer(struct packet *pkt)
@@ -62,7 +63,7 @@ void Receiver_FromLowerLayer(struct packet *pkt)
             if (msg != NULL)free(msg);
         } else {
             // current turn's packet
-            if (pkt->data[1] > cur_seq_expected && (pkt->data[1] < (cur_seq_expected + MAX_SEQ / 2))) {
+            if (this_turn(pkt->data[1], cur_seq_expected)) {
                 DEBUG("Receiver receive seq = %d, but expect %d, store it\n", pkt->data[1], cur_seq_expected);
                 if (buffered_packets.count(pkt->data[1])) {
                     DEBUG("****Fatal: buffer overflow seq=%d\n", pkt->data[1]);
@@ -82,7 +83,7 @@ void Receiver_FromLowerLayer(struct packet *pkt)
             msg->data = (char*) malloc (msg->size);
             memcpy(msg->data, pkt.data + HEADER_SIZE, msg->size);
             Receiver_ToUpperLayer(msg);
-            DEBUG("Receiver from buffer, get seq=%d, and send ack\n", cur_seq_expected);
+            DEBUG("Receiver from buffer, get seq=%d\n", cur_seq_expected);
             ASSERT(buffered_packets.erase(cur_seq_expected) > 0);
             inc(cur_seq_expected);
             //Receiver_ToLowerLayer(&pkt); // ack

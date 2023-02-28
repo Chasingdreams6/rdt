@@ -30,7 +30,12 @@ static bool between(int a, int b, int c) {
 
 void build_checksum(packet *packet) {
     unsigned short checksum = calc_checksum(packet);
-    packet->data[RDT_PKTSIZE - TAIL_SIZE] = (checksum >> 8) & 0XFF;
-    packet->data[RDT_PKTSIZE - TAIL_SIZE + 1] = checksum & 0XFF;
+    packet->data[RDT_PKTSIZE - TAIL_SIZE] = (char)((checksum >> 8) & 0XFF);
+    packet->data[RDT_PKTSIZE - TAIL_SIZE + 1] = (char)(checksum & 0XFF);
 }
 
+bool this_turn(int seq, int window_head) {
+    if (seq > window_head && seq < window_head + MAX_WINDOW) return true;
+    if (seq < window_head && MAX_SEQ + seq - window_head < MAX_WINDOW - 1) return true;
+    return false;
+}
