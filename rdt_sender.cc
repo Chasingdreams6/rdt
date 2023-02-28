@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <queue>
+#include <map>
 #include <list>
 #include "rdt_struct.h"
 #include "rdt_sender.h"
@@ -27,6 +28,7 @@ int next_frame_to_send, ack_expected, buffered_num;
 std::queue<packet> packets;
 std::list<Time_pair> logical_clock;
 packet buffers[MAX_SEQ + 1];
+bool buffered_ack[MAX_SEQ + 1];
 bool push_to_buffer(packet &packet) {
     packets.push(packet);
     return true;
@@ -61,20 +63,28 @@ void Wrapped_StopTimer(int seq) {
         }
     }
     if (flag) {
+        while (!logical_clock.empty()) {
+            double lastTime = (*logical_clock.begin()).create_time + TIMEOUT - GetSimulationTime();
+            if (lastTime <= 0) { // give up this clock, rely on last resend's
+                DEBUG("Clock seq = %d, create_time = %f expired\n", (*logical_clock.begin()).seq
+                      , (*logical_clock.begin()).create_time);
+                logical_clock.erase(logical_clock.begin());
+            } else {
+                Sender_StartTimer(lastTime);
+                break;
+            }
+        }
         if (logical_clock.empty()) { // no timer current
             Sender_StopTimer();
             return ;
         }
-        double lastTime = (*logical_clock.begin()).create_time + TIMEOUT - GetSimulationTime();
-        ASSERT(lastTime > 0);
-        Sender_StartTimer(lastTime);
     }
 }
 
 // try to send a packet, if buffered_num >= 10, directly return
 // this will be called everywhere
-void try_sendPacket(bool flag) {
-    if (buffered_num >= MAX_SEQ) return; // inque number, waiting for ack ...
+void try_sendPacket() {
+    if (buffered_num >= MAX_SEQ / 2) return; // inque number, waiting for ack ...
     packet pkt;
     if (!pop_from_buffer(&pkt)) return;
     ASSERT(pkt.data[1] <= MAX_SEQ);
@@ -82,10 +92,13 @@ void try_sendPacket(bool flag) {
     buffered_num++;
     Wrapped_StartTimer(pkt.data[1]);
     Sender_ToLowerLayer(&pkt);
-    if (!flag)
-        DEBUG("Sent a packet, seq = %d\n", pkt.data[1]);
-    else
-        DEBUG("Resent a packet, seq = %d\n", pkt.data[1]);
+    DEBUG("Sent a packet, seq = %d\n", pkt.data[1]);
+}
+void resendPacket(int seq) {
+    packet pkt = buffers[seq];
+    Wrapped_StartTimer(seq);
+    Sender_ToLowerLayer(&pkt);
+    DEBUG("Resend a packet, seq = %d\n", seq);
 }
 
 /* sender initialization, called once at the very beginning */
@@ -121,7 +134,7 @@ void Sender_FromUpperLayer(struct message *msg) {
             DEBUG("Fatal: buffer used up, seq = %d\n", next_frame_to_send);
         }
         cursor += maxpayload_size;
-        try_sendPacket(false);
+        try_sendPacket();
     }
     if (msg->size > cursor) {
         pkt.data[0] = (char)((msg->size - cursor) & 0XFF);
@@ -132,9 +145,9 @@ void Sender_FromUpperLayer(struct message *msg) {
         if (!push_to_buffer(pkt)) {
             DEBUG("Fatal: buffer used up, seq = %d\n", next_frame_to_send);
         }
-        try_sendPacket(false);
+        try_sendPacket();
     }
-    try_sendPacket(false);
+    try_sendPacket();
 }
 
 /* event handler, called when a packet is passed from the lower layer at the 
@@ -150,18 +163,35 @@ void Sender_FromLowerLayer(struct packet *pkt) {
         Wrapped_StopTimer(ack_expected);
         buffered_num--;
         inc(ack_expected);
-        DEBUG("Sender received ack, seq = %d, next expected seq = %d\n", pkt->data[1], ack_expected);
-        try_sendPacket(false);
+        DEBUG("Sender received ack, seq = %d, is expected\n", pkt->data[1]);
+        try_sendPacket();
+    } else { // another packet's ack, just stop the timer
+        if (pkt->data[1] > ack_expected && (pkt->data[1] < (ack_expected) + MAX_SEQ / 2)) {
+            DEBUG("Sender received ack, seq = %d, not expected, store it\n", pkt->data[1]);
+            Wrapped_StopTimer(pkt->data[1]);
+            if (buffered_ack[pkt->data[1]]) {
+                DEBUG("FATAL: *** buffered_ack overwritted, seq = %d\n", pkt->data[1]);
+            }
+            buffered_ack[pkt->data[1]] = true;
+        }
+        else
+            DEBUG("Sender received ack, seq = %d, not expected and too old, ignore it\n", pkt->data[1]);
+    }
+    while (buffered_ack[ack_expected]) {
+        buffered_num--;
+        DEBUG("Sender get ack from buffer, seq %d\n", ack_expected);
+        buffered_ack[ack_expected] = false;
+        inc(ack_expected);
+        try_sendPacket();
     }
 }
 
 /* event handler, called when the timer expires */
 /* simply resend all datas in buffer*/
 void Sender_Timeout() {
-    DEBUG("Timeout, seq = %d\n", ack_expected);
-    next_frame_to_send = ack_expected;
+    DEBUG("Timeout, seq = %d, cur_buffered_num = %d\n", ack_expected, buffered_num);
     int tmp = buffered_num;
-    for (int i = 1; i <= tmp; ++i) {
-        try_sendPacket(true);
+    for (int i = 0; i < tmp; ++i) {
+        resendPacket((ack_expected + i) % (MAX_SEQ + 1));
     }
 }
