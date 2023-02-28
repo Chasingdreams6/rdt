@@ -17,10 +17,11 @@
 #define BIOS_NUMBER 27
 #define TIMEOUT 0.3
 #define DEBUG(format, ...) do { \
-    if (true)                   \
+    if (false)    {               \
         fprintf(stdout, "%f %s %s(Line %d):", GetSimulationTime(), __FILE__, __FUNCTION__, __LINE__);\
         fprintf(stdout, format, __VA_ARGS__);\
-    } \
+    }                           \
+    }\
     while(0)
 #define inc(seq) do { \
     if (seq < MAX_SEQ) \
@@ -41,9 +42,13 @@ struct Time_pair {
 };
 
 void build_checksum(packet *packet);
+
 unsigned short calc_checksum(packet *packet);
+
 bool check_packet(packet *packet);
+
 static bool between(int a, int b, int c);
+
 bool this_turn(int seq, int window_head);
 
 
